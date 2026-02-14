@@ -42,6 +42,9 @@
             100% { transform: rotate(360deg); }
         }
         #powerapp-frame {
+            position: absolute;
+            top: 0;
+            left: 0;
             width: 100%;
             height: 100%;
             border: none;
@@ -73,6 +76,28 @@
             
             if (info.host === Office.HostType.Outlook) {
                 loadEmailData();
+                
+                // AUTO-REFRESH - Nasłuchuj na zmianę emaila
+                try {
+                    Office.context.mailbox.addHandlerAsync(
+                        Office.EventType.ItemChanged,
+                        function(eventArgs) {
+                            console.log('Email changed - reloading data...');
+                            
+                            // Pokaż loader
+                            document.getElementById('loading').style.display = 'flex';
+                            document.getElementById('powerapp-frame').style.display = 'none';
+                            
+                            // Odśwież dane po krótkiej chwili
+                            setTimeout(function() {
+                                loadEmailData();
+                            }, 500);
+                        }
+                    );
+                    console.log('ItemChanged handler registered successfully');
+                } catch (e) {
+                    console.log('Could not register ItemChanged handler:', e);
+                }
             } else {
                 showError('Ten add-in działa tylko w Outlooku');
             }
@@ -104,7 +129,8 @@
                     subject: emailSubject,
                     itemId: emailId,
                     conversationId: conversationId,
-                    hidenavbar: 'true'
+                    hidenavbar: 'true',
+                    timestamp: Date.now() // Force refresh
                 });
 
                 const powerAppUrl = `${powerAppBaseUrl}?${params.toString()}`;
@@ -139,25 +165,3 @@
     </script>
 </body>
 </html>
-
-Office.onReady(function(info) {
-    console.log('Office.js ready');
-    
-    if (info.host === Office.HostType.Outlook) {
-        loadEmailData();
-        
-        // NOWE - Nasłuchuj na zmianę emaila
-        if (Office.context.mailbox.addHandlerAsync) {
-            Office.context.mailbox.addHandlerAsync(
-                Office.EventType.ItemChanged,
-                function(eventArgs) {
-                    console.log('Email changed - reloading...');
-                    // Przeładuj dane z nowego emaila
-                    loadEmailData();
-                }
-            );
-        }
-    } else {
-        showError('Ten add-in działa tylko w Outlooku');
-    }
-});
