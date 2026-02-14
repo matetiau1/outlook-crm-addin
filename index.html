@@ -139,3 +139,25 @@
     </script>
 </body>
 </html>
+
+Office.onReady(function(info) {
+    console.log('Office.js ready');
+    
+    if (info.host === Office.HostType.Outlook) {
+        loadEmailData();
+        
+        // NOWE - Nasłuchuj na zmianę emaila
+        if (Office.context.mailbox.addHandlerAsync) {
+            Office.context.mailbox.addHandlerAsync(
+                Office.EventType.ItemChanged,
+                function(eventArgs) {
+                    console.log('Email changed - reloading...');
+                    // Przeładuj dane z nowego emaila
+                    loadEmailData();
+                }
+            );
+        }
+    } else {
+        showError('Ten add-in działa tylko w Outlooku');
+    }
+});
