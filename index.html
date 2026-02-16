@@ -58,6 +58,12 @@
             margin: 20px;
             border-radius: 4px;
         }
+        #no-message {
+            display: none;
+            text-align: center;
+            padding: 40px;
+            color: #666;
+        }
     </style>
 </head>
 <body>
@@ -68,35 +74,82 @@
     
     <div id="error"></div>
     
+    <div id="no-message">
+        <h3>Brak wybranej wiadomości</h3>
+        <p>Wybierz wiadomość aby zobaczyć notatki CRM</p>
+    </div>
+    
     <iframe id="powerapp-frame"></iframe>
 
     <script>
+        let currentItemId = null;
+        let isInitialized = false;
+
         Office.onReady(function(info) {
-            console.log('Office.js ready');
+            console.log('✅ Office.js ready');
             
             if (info.host === Office.HostType.Outlook) {
+                // Załaduj dane dla pierwszej wiadomości
                 loadEmailData();
+                
+                // 🔑 KLUCZOWE: Zarejestruj handler dla zmiany wiadomości
+                Office.context.mailbox.addHandlerAsync(
+                    Office.EventType.ItemChanged,
+                    onItemChanged,
+                    function(result) {
+                        if (result.status === Office.AsyncResultStatus.Succeeded) {
+                            console.log('✅ ItemChanged handler zarejestrowany');
+                            isInitialized = true;
+                        } else {
+                            console.error('❌ Błąd rejestracji handlera:', result.error);
+                        }
+                    }
+                );
             } else {
                 showError('Ten add-in działa tylko w Outlooku');
             }
         });
 
+        // 🔄 Funkcja wywoływana przy zmianie wiadomości
+        function onItemChanged() {
+            console.log('🔄 Wykryto zmianę wiadomości');
+            
+            // Pokaż loading
+            showLoading();
+            
+            // Załaduj nowe dane
+            loadEmailData();
+        }
+
         function loadEmailData() {
             try {
                 const item = Office.context.mailbox.item;
                 
+                // Sprawdź czy jest wybrana wiadomość
                 if (!item) {
-                    showError('Nie można odczytać danych emaila');
+                    console.log('⚠️ Brak wybranej wiadomości');
+                    showNoMessage();
                     return;
                 }
+
+                // Sprawdź czy to ta sama wiadomość (optymalizacja)
+                const itemId = item.itemId || item.conversationId || '';
+                if (itemId === currentItemId && isInitialized) {
+                    console.log('📌 Ta sama wiadomość, pomijam przeładowanie');
+                    hideLoading();
+                    return;
+                }
+                
+                currentItemId = itemId;
+                console.log('📧 Ładuję nową wiadomość:', itemId);
 
                 const emailFrom = item.from ? item.from.emailAddress : '';
                 const emailSubject = item.subject || '';
                 const emailId = item.itemId || '';
                 const conversationId = item.conversationId || '';
                 
-                console.log('Email From:', emailFrom);
-                console.log('Subject:', emailSubject);
+                console.log('📊 Email From:', emailFrom);
+                console.log('📊 Subject:', emailSubject);
 
                 const powerAppBaseUrl = 'https://apps.powerapps.com/play/e/default-4ad84be0-f918-4dfa-8006-a408554ec666/a/d8381997-c864-4808-b179-b3dfd21c5ae7';
                 
@@ -107,30 +160,52 @@
                     subject: emailSubject,
                     itemId: emailId,
                     conversationId: conversationId,
-                    hidenavbar: 'true'
+                    hidenavbar: 'true',
+                    // Dodaj timestamp żeby wymusić przeładowanie
+                    _t: new Date().getTime()
                 });
 
                 const powerAppUrl = `${powerAppBaseUrl}?${params.toString()}`;
                 
-                console.log('Loading Power App:', powerAppUrl);
+                console.log('🚀 Loading Power App:', powerAppUrl);
 
                 const iframe = document.getElementById('powerapp-frame');
                 iframe.src = powerAppUrl;
                 
                 iframe.onload = function() {
-                    document.getElementById('loading').style.display = 'none';
+                    console.log('✅ Power App załadowany');
+                    hideLoading();
                     iframe.style.display = 'block';
                 };
 
+                // Fallback timeout na wypadek gdyby onload nie zadziałał
                 setTimeout(function() {
-                    document.getElementById('loading').style.display = 'none';
+                    hideLoading();
                     iframe.style.display = 'block';
                 }, 3000);
 
             } catch (error) {
-                console.error('Error:', error);
+                console.error('❌ Error:', error);
                 showError('Błąd podczas ładowania: ' + error.message);
             }
+        }
+
+        function showLoading() {
+            document.getElementById('loading').style.display = 'flex';
+            document.getElementById('error').style.display = 'none';
+            document.getElementById('no-message').style.display = 'none';
+        }
+
+        function hideLoading() {
+            document.getElementById('loading').style.display = 'none';
+        }
+
+        function showNoMessage() {
+            currentItemId = null;
+            document.getElementById('loading').style.display = 'none';
+            document.getElementById('error').style.display = 'none';
+            document.getElementById('no-message').style.display = 'block';
+            document.getElementById('powerapp-frame').style.display = 'none';
         }
 
         function showError(message) {
@@ -138,6 +213,8 @@
             errorDiv.textContent = message;
             errorDiv.style.display = 'block';
             document.getElementById('loading').style.display = 'none';
+            document.getElementById('no-message').style.display = 'none';
+            document.getElementById('powerapp-frame').style.display = 'none';
         }
     </script>
 </body>
