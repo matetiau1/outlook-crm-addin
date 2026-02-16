@@ -191,6 +191,18 @@
                         
                         console.log('📤 Wysyłam:', message);
                         iframe.contentWindow.postMessage(message, '*');
+                        
+                        // 🆕 ZAPISZ DO localStorage żeby Power Apps mógł odczytać
+                        try {
+                            localStorage.setItem('outlook_email', emailFrom);
+                            localStorage.setItem('outlook_subject', emailSubject);
+                            localStorage.setItem('outlook_conversationId', conversationId);
+                            localStorage.setItem('outlook_itemId', emailId);
+                            localStorage.setItem('outlook_timestamp', new Date().getTime().toString());
+                            console.log('✅ Zapisano do localStorage');
+                        } catch(e) {
+                            console.error('❌ Błąd localStorage:', e);
+                        }
                     }
                 }
 
