@@ -83,7 +83,7 @@
 
     <script>
         let currentItemId = null;
-        let isInitialized = false;
+        let isFirstLoad = true;
 
         Office.onReady(function(info) {
             console.log('✅ Office.js ready');
@@ -99,7 +99,6 @@
                     function(result) {
                         if (result.status === Office.AsyncResultStatus.Succeeded) {
                             console.log('✅ ItemChanged handler zarejestrowany');
-                            isInitialized = true;
                         } else {
                             console.error('❌ Błąd rejestracji handlera:', result.error);
                         }
@@ -113,11 +112,6 @@
         // 🔄 Funkcja wywoływana przy zmianie wiadomości
         function onItemChanged() {
             console.log('🔄 Wykryto zmianę wiadomości');
-            
-            // Pokaż loading
-            showLoading();
-            
-            // Załaduj nowe dane
             loadEmailData();
         }
 
@@ -132,57 +126,73 @@
                     return;
                 }
 
-                // Sprawdź czy to ta sama wiadomość (optymalizacja)
                 const itemId = item.itemId || item.conversationId || '';
-                if (itemId === currentItemId && isInitialized) {
-                    console.log('📌 Ta sama wiadomość, pomijam przeładowanie');
-                    hideLoading();
-                    return;
-                }
-                
-                currentItemId = itemId;
-                console.log('📧 Ładuję nową wiadomość:', itemId);
-
                 const emailFrom = item.from ? item.from.emailAddress : '';
                 const emailSubject = item.subject || '';
                 const emailId = item.itemId || '';
                 const conversationId = item.conversationId || '';
                 
+                console.log('📧 Wiadomość:', itemId);
                 console.log('📊 Email From:', emailFrom);
                 console.log('📊 Subject:', emailSubject);
 
-                const powerAppBaseUrl = 'https://apps.powerapps.com/play/e/default-4ad84be0-f918-4dfa-8006-a408554ec666/a/d8381997-c864-4808-b179-b3dfd21c5ae7';
-                
-                const params = new URLSearchParams({
-                    tenantId: '4ad84be0-f918-4dfa-8006-a408554ec666',
-                    source: 'outlook',
-                    email: emailFrom,
-                    subject: emailSubject,
-                    itemId: emailId,
-                    conversationId: conversationId,
-                    hidenavbar: 'true',
-                    // Dodaj timestamp żeby wymusić przeładowanie
-                    _t: new Date().getTime()
-                });
+                // 🆕 PIERWSZA ZMIANA: Przy pierwszym załadowaniu - załaduj iframe
+                if (isFirstLoad) {
+                    console.log('🚀 Pierwsze załadowanie - ładuję iframe');
+                    isFirstLoad = false;
+                    currentItemId = itemId;
+                    
+                    const powerAppBaseUrl = 'https://apps.powerapps.com/play/e/default-4ad84be0-f918-4dfa-8006-a408554ec666/a/d8381997-c864-4808-b179-b3dfd21c5ae7';
+                    
+                    const params = new URLSearchParams({
+                        tenantId: '4ad84be0-f918-4dfa-8006-a408554ec666',
+                        source: 'outlook',
+                        email: emailFrom,
+                        subject: emailSubject,
+                        itemId: emailId,
+                        conversationId: conversationId,
+                        hidenavbar: 'true'
+                    });
 
-                const powerAppUrl = `${powerAppBaseUrl}?${params.toString()}`;
-                
-                console.log('🚀 Loading Power App:', powerAppUrl);
+                    const powerAppUrl = `${powerAppBaseUrl}?${params.toString()}`;
+                    
+                    const iframe = document.getElementById('powerapp-frame');
+                    iframe.src = powerAppUrl;
+                    
+                    iframe.onload = function() {
+                        console.log('✅ Power App załadowany');
+                        hideLoading();
+                        iframe.style.display = 'block';
+                    };
 
-                const iframe = document.getElementById('powerapp-frame');
-                iframe.src = powerAppUrl;
-                
-                iframe.onload = function() {
-                    console.log('✅ Power App załadowany');
-                    hideLoading();
-                    iframe.style.display = 'block';
-                };
-
-                // Fallback timeout na wypadek gdyby onload nie zadziałał
-                setTimeout(function() {
-                    hideLoading();
-                    iframe.style.display = 'block';
-                }, 3000);
+                    setTimeout(function() {
+                        hideLoading();
+                        iframe.style.display = 'block';
+                    }, 3000);
+                    
+                } else {
+                    // 🆕 DRUGA ZMIANA: Przy kolejnych zmianach - wyślij tylko dane przez PostMessage
+                    console.log('📨 Aktualizacja danych przez PostMessage');
+                    
+                    currentItemId = itemId;
+                    
+                    const iframe = document.getElementById('powerapp-frame');
+                    if (iframe && iframe.contentWindow) {
+                        const message = {
+                            type: 'UPDATE_EMAIL_CONTEXT',
+                            data: {
+                                email: emailFrom,
+                                subject: emailSubject,
+                                itemId: emailId,
+                                conversationId: conversationId,
+                                timestamp: new Date().toISOString()
+                            }
+                        };
+                        
+                        console.log('📤 Wysyłam:', message);
+                        iframe.contentWindow.postMessage(message, '*');
+                    }
+                }
 
             } catch (error) {
                 console.error('❌ Error:', error);
